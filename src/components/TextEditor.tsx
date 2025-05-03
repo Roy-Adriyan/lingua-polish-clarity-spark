@@ -1,7 +1,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Eraser, Copy, Check } from "lucide-react";
+import { Eraser, Copy, Check, SpellCheck } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface TextEditorProps {
@@ -19,6 +19,7 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
   
   // Track if we're applying a suggestion to prevent re-analysis
   const [isApplyingSuggestion, setIsApplyingSuggestion] = useState(false);
+  const [lastAppliedSuggestion, setLastAppliedSuggestion] = useState<string | null>(null);
   
   // Apply highlighting when issues change
   useEffect(() => {
@@ -62,11 +63,15 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
     
     try {
       setIsApplyingSuggestion(true);
+      setLastAppliedSuggestion(id);
       
       const { position, length } = issue;
       if (position !== undefined && length !== undefined) {
+        // For cases where we're adding something at the end (length = 0)
+        const actualLength = length === 0 ? 0 : length;
+        
         const before = text.substring(0, position);
-        const after = text.substring(position + length);
+        const after = text.substring(position + actualLength);
         const newText = before + replacement + after;
         
         // Update the text
@@ -82,13 +87,16 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
 
         // Show toast confirmation
         toast({
-          title: "Suggestion applied",
-          description: "The text has been updated with the suggestion.",
+          title: "Correction applied",
+          description: `Fixed: "${issue.text}" → "${replacement}"`,
         });
       }
     } finally {
       // Ensure we reset this flag
-      setTimeout(() => setIsApplyingSuggestion(false), 50);
+      setTimeout(() => {
+        setIsApplyingSuggestion(false);
+        setLastAppliedSuggestion(null);
+      }, 50);
     }
   };
 
@@ -127,8 +135,10 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
           if (type === "grammar") className = "grammar-error";
           else if (type === "style") className = "style-suggestion";
           else if (type === "clarity") className = "clarity-suggestion";
+          else if (type === "punctuation") className = "punctuation-error";
+          else if (type === "capitalization") className = "capitalization-error";
 
-          html = `${before}<span class="${className}" data-issue-id="${id}">${highlight}</span>${after}`;
+          html = `${before}<span class="${className}" data-issue-id="${id}" title="${issue.message}">${highlight}</span>${after}`;
         }
       }
 
@@ -200,11 +210,41 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
     }
   };
 
+  const correctAllIssues = () => {
+    // Apply all suggestions in reverse order to avoid position shifting
+    const sortedIssues = [...issues].sort((a, b) => b.position - a.position);
+    
+    sortedIssues.forEach(issue => {
+      if (issue.suggestions && issue.suggestions.length > 0) {
+        // Delay between applications to ensure they all apply correctly
+        setTimeout(() => {
+          applySuggestion(issue.id, issue.suggestions[0]);
+        }, 0);
+      }
+    });
+    
+    toast({
+      title: "Auto-correction complete",
+      description: `Applied ${sortedIssues.length} corrections`,
+    });
+  };
+
   return (
     <div className="relative w-full">
       <div className="flex items-center justify-between mb-2">
         <h2 className="font-semibold text-lg">Text Editor</h2>
         <div className="flex items-center space-x-2">
+          {issues.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={correctAllIssues}
+              className="flex items-center"
+            >
+              <SpellCheck className="w-4 h-4 mr-1" />
+              Auto-correct All
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
@@ -250,18 +290,36 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
               {text.length} characters | {text.split(/\s+/).filter(Boolean).length} words
             </div>
             {issues.length > 0 ? (
-              <div className="flex items-center">
-                <span className="inline-block w-3 h-3 rounded-full bg-[hsl(var(--error))] mr-1"></span>
-                <span className="mr-3">
-                  {issues.filter(i => i.type === "grammar").length} grammar
+              <div className="flex items-center flex-wrap gap-x-3 gap-y-1">
+                <span className="inline-flex items-center">
+                  <span className="inline-block w-3 h-3 rounded-full bg-[hsl(var(--error))] mr-1"></span>
+                  <span>
+                    {issues.filter(i => i.type === "grammar").length} grammar
+                  </span>
                 </span>
-                <span className="inline-block w-3 h-3 rounded-full bg-[hsl(var(--warning))] mr-1"></span>
-                <span className="mr-3">
-                  {issues.filter(i => i.type === "style").length} style
+                <span className="inline-flex items-center">
+                  <span className="inline-block w-3 h-3 rounded-full bg-[hsl(var(--error))] mr-1"></span>
+                  <span>
+                    {issues.filter(i => i.type === "punctuation").length} punctuation
+                  </span>
                 </span>
-                <span className="inline-block w-3 h-3 rounded-full bg-[hsl(var(--info))] mr-1"></span>
-                <span>
-                  {issues.filter(i => i.type === "clarity").length} clarity
+                <span className="inline-flex items-center">
+                  <span className="inline-block w-3 h-3 rounded-full bg-[hsl(var(--warning))] mr-1"></span>
+                  <span>
+                    {issues.filter(i => i.type === "capitalization").length} capitalization
+                  </span>
+                </span>
+                <span className="inline-flex items-center">
+                  <span className="inline-block w-3 h-3 rounded-full bg-[hsl(var(--warning))] mr-1"></span>
+                  <span>
+                    {issues.filter(i => i.type === "style").length} style
+                  </span>
+                </span>
+                <span className="inline-flex items-center">
+                  <span className="inline-block w-3 h-3 rounded-full bg-[hsl(var(--info))] mr-1"></span>
+                  <span>
+                    {issues.filter(i => i.type === "clarity").length} clarity
+                  </span>
                 </span>
               </div>
             ) : (

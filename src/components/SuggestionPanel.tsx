@@ -1,6 +1,6 @@
 
 import { Button } from "@/components/ui/button";
-import { Check, X, AlertCircle, AlertTriangle, Info, MessageCircle } from "lucide-react";
+import { Check, X, AlertCircle, AlertTriangle, Info, MessageCircle, TextQuote, SpellCheck2 } from "lucide-react";
 
 interface SuggestionProps {
   issues: any[];
@@ -33,6 +33,10 @@ const SuggestionPanel = ({
         return <AlertTriangle className="w-5 h-5 text-[hsl(var(--warning))]" />;
       case "clarity":
         return <Info className="w-5 h-5 text-[hsl(var(--info))]" />;
+      case "punctuation":
+        return <TextQuote className="w-5 h-5 text-[hsl(var(--error))]" />;
+      case "capitalization":
+        return <SpellCheck2 className="w-5 h-5 text-[hsl(var(--warning))]" />;
       default:
         return <AlertCircle className="w-5 h-5" />;
     }
@@ -41,8 +45,10 @@ const SuggestionPanel = ({
   const getCardClass = (type: string) => {
     switch (type) {
       case "grammar":
+      case "punctuation":
         return "suggestion-card error";
       case "style":
+      case "capitalization":
         return "suggestion-card warning";
       case "clarity":
         return "suggestion-card info";
@@ -59,6 +65,10 @@ const SuggestionPanel = ({
         return "Style Suggestion";
       case "clarity":
         return "Clarity Improvement";
+      case "punctuation":
+        return "Punctuation Error";
+      case "capitalization":
+        return "Capitalization Error";
       default:
         return "Suggestion";
     }
@@ -89,11 +99,18 @@ const SuggestionPanel = ({
               </div>
             </div>
             
+            <div className="mt-3">
+              <p className="text-sm text-gray-600 mb-1">Found in text:</p>
+              <div className="bg-gray-100 rounded p-2 text-sm">
+                "{issue.text}"
+              </div>
+            </div>
+            
             {issue.suggestions && issue.suggestions.length > 0 && (
               <div className="mt-3">
                 <p className="text-sm font-medium text-gray-700 mb-2">Suggestion:</p>
                 <div className="bg-linguapolish-light/30 rounded p-2 text-sm">
-                  {issue.suggestions[0]}
+                  "{issue.suggestions[0]}"
                 </div>
               </div>
             )}

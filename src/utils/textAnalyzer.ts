@@ -51,6 +51,56 @@ const sampleIssues: Record<string, any[]> = {
       length: 19,
       suggestions: ["essential"],
       explanation: "'Essential' already means absolutely necessary."
+    },
+    {
+      id: "6",
+      type: "punctuation",
+      message: "Missing period at end of sentence",
+      text: "The report is due tomorrow",
+      position: 0,
+      length: 25,
+      suggestions: ["The report is due tomorrow."],
+      explanation: "Sentences should end with proper punctuation."
+    },
+    {
+      id: "7",
+      type: "punctuation",
+      message: "Missing question mark",
+      text: "Where did you go",
+      position: 0,
+      length: 15,
+      suggestions: ["Where did you go?"],
+      explanation: "Questions should end with a question mark."
+    },
+    {
+      id: "8",
+      type: "capitalization",
+      message: "Sentence should begin with a capital letter",
+      text: "this is important",
+      position: 0,
+      length: 16,
+      suggestions: ["This is important"],
+      explanation: "Sentences should begin with a capital letter."
+    },
+    {
+      id: "9",
+      type: "capitalization",
+      message: "Proper noun should be capitalized",
+      text: "we visited london",
+      position: 0,
+      length: 17,
+      suggestions: ["We visited London"],
+      explanation: "Proper nouns like city names should be capitalized."
+    },
+    {
+      id: "10",
+      type: "grammar",
+      message: "Double negative",
+      text: "don't have no",
+      position: 0,
+      length: 12,
+      suggestions: ["don't have any", "have no"],
+      explanation: "Double negatives create confusion. Use a single negative for clarity."
     }
   ],
   "en-gb": [
@@ -125,7 +175,26 @@ const defaultIssues = [
   }
 ];
 
-// Sample function to mimic text analysis
+// Text patterns to check for common issues
+const commonErrors = {
+  punctuation: [
+    { pattern: /\w+$/, message: "Missing end punctuation", fix: (match: string) => `${match}.` },
+    { pattern: /\w+\s+$/, message: "Missing end punctuation", fix: (match: string) => `${match.trim()}.` },
+    { pattern: /(\w+)\s(\w+)\s*$/, message: "Missing end punctuation", fix: (match: string) => `${match.trim()}.` },
+    { pattern: /\w+\?/, message: "Space before question mark", fix: (match: string) => match.replace('?', ' ?') }
+  ],
+  capitalization: [
+    { pattern: /^[a-z]/, message: "Sentence should start with capital letter", fix: (match: string) => match.charAt(0).toUpperCase() + match.slice(1) },
+    { pattern: /\.\s+[a-z]/, message: "New sentence should start with capital letter", fix: (match: string) => match.replace(/\.\s+[a-z]/, (s) => s.replace(/[a-z]/, (c) => c.toUpperCase())) }
+  ],
+  grammar: [
+    { pattern: /they was/i, message: "Subject-verb agreement error", fix: () => "they were" },
+    { pattern: /i is/i, message: "Subject-verb agreement error", fix: () => "I am" },
+    { pattern: /you is/i, message: "Subject-verb agreement error", fix: () => "you are" }
+  ]
+};
+
+// Enhanced text analysis function
 export const analyzeText = (text: string, language: string): any[] => {
   // If text is empty, return no issues
   if (!text.trim()) return [];
@@ -142,56 +211,117 @@ export const analyzeText = (text: string, language: string): any[] => {
     
     let position = lowerText.indexOf(lowerIssueText);
     while (position !== -1) {
-      // Create a copy of the issue with updated position
-      const newIssue = {
-        ...issue,
-        id: `${issue.id}-${position}`, // Make ID unique based on position
-        position,
-        length: issue.text.length
-      };
-      
-      foundIssues.push(newIssue);
+      // Make sure we're not adding duplicate issues for the same text position
+      if (!foundIssues.some(i => i.position === position && i.length === issue.text.length)) {
+        // Create a copy of the issue with updated position
+        const actualText = text.substring(position, position + issue.text.length);
+        const newIssue = {
+          ...issue,
+          id: `${issue.id}-${position}`, // Make ID unique based on position
+          position,
+          length: issue.text.length,
+          text: actualText // Use actual case from the text
+        };
+        
+        foundIssues.push(newIssue);
+      }
       position = lowerText.indexOf(lowerIssueText, position + 1);
     }
   });
   
+  // Check for punctuation, capitalization, and grammar issues
+  if (text.length > 3) {
+    // Check for sentences without proper ending punctuation
+    const sentences = text.split(/(?<=[.!?])\s+/);
+    sentences.forEach((sentence, index) => {
+      if (sentence.length > 0) {
+        // Check for capitalization at start of sentence
+        if (/^[a-z]/.test(sentence)) {
+          const position = sentences.slice(0, index).join(' ').length + (index > 0 ? 1 : 0);
+          foundIssues.push({
+            id: `cap-${position}`,
+            type: "capitalization",
+            message: "Sentence should begin with a capital letter",
+            text: sentence.substring(0, Math.min(20, sentence.length)),
+            position: position,
+            length: 1,
+            suggestions: [sentence.charAt(0).toUpperCase() + sentence.slice(1)]
+          });
+        }
+        
+        // Check for missing punctuation at end of sentence
+        const lastChar = sentence.trim().slice(-1);
+        if (!/[.!?]/.test(lastChar) && sentence.trim().length > 0) {
+          const position = text.indexOf(sentence) + sentence.length - 1;
+          foundIssues.push({
+            id: `punc-${position}`,
+            type: "punctuation",
+            message: "Missing end punctuation",
+            text: sentence.substring(Math.max(0, sentence.length - 20)),
+            position: position,
+            length: 0,
+            suggestions: [sentence.trim() + "."]
+          });
+        }
+      }
+    });
+  }
+  
   // If we have text but found no issues based on exact matches, add a random issue
   // This is just to make the demo more interactive
   if (foundIssues.length === 0 && text.length > 20) {
-    // Pick a random position in the text for the issue
-    const randomPosition = Math.floor(Math.random() * (text.length - 10));
-    const randomLength = Math.min(Math.floor(Math.random() * 10) + 3, text.length - randomPosition);
-    const randomText = text.substring(randomPosition, randomPosition + randomLength);
+    // Create a more realistic random issue
+    const randomSentenceStart = text.indexOf(' ');
+    const randomWordBoundaries = [];
     
-    // Pick a random issue type
-    const types = ["grammar", "style", "clarity"];
-    const randomType = types[Math.floor(Math.random() * types.length)];
-    
-    // Pick a random message based on type
-    let message = "Issue detected";
-    let suggestion = `Suggested replacement for "${randomText}"`;
-    
-    if (randomType === "grammar") {
-      message = "Possible grammar issue";
-      suggestion = randomText.charAt(0).toUpperCase() + randomText.slice(1);
-    } else if (randomType === "style") {
-      message = "Style could be improved";
-      suggestion = randomText + " (improved)";
-    } else {
-      message = "This could be clearer";
-      suggestion = "Clearer " + randomText;
+    // Find word boundaries to place realistic issues
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === ' ' && i > 0 && i < text.length - 1) {
+        randomWordBoundaries.push(i + 1);
+      }
     }
     
-    foundIssues.push({
-      id: `random-${Date.now()}`,
-      type: randomType,
-      message,
-      text: randomText,
-      position: randomPosition,
-      length: randomLength,
-      suggestions: [suggestion],
-      explanation: "This is a demonstration issue."
-    });
+    if (randomWordBoundaries.length > 0) {
+      const randomPosition = randomWordBoundaries[Math.floor(Math.random() * randomWordBoundaries.length)];
+      const nextSpacePos = text.indexOf(' ', randomPosition);
+      const randomLength = nextSpacePos > randomPosition ? nextSpacePos - randomPosition : 5;
+      const randomText = text.substring(randomPosition, randomPosition + randomLength);
+      
+      // Pick a random issue type with proper weighting
+      const types = ["grammar", "punctuation", "capitalization", "style", "clarity"];
+      const randomType = types[Math.floor(Math.random() * types.length)];
+      
+      let message = "Issue detected";
+      let suggestion = `Suggested replacement for "${randomText}"`;
+      
+      if (randomType === "grammar") {
+        message = "Possible grammar issue";
+        suggestion = randomText.charAt(0).toUpperCase() + randomText.slice(1);
+      } else if (randomType === "punctuation") {
+        message = "Punctuation could be improved";
+        suggestion = randomText + ".";
+      } else if (randomType === "capitalization") {
+        message = "Consider capitalizing this term";
+        suggestion = randomText.charAt(0).toUpperCase() + randomText.slice(1);
+      } else if (randomType === "style") {
+        message = "Style could be improved";
+        suggestion = randomText + " (improved wording)";
+      } else {
+        message = "This could be clearer";
+        suggestion = "Clearer " + randomText;
+      }
+      
+      foundIssues.push({
+        id: `random-${Date.now()}`,
+        type: randomType,
+        message,
+        text: randomText,
+        position: randomPosition,
+        length: randomLength,
+        suggestions: [suggestion],
+        explanation: "This is a demonstration issue."
+      });
+    }
   }
   
   return foundIssues;

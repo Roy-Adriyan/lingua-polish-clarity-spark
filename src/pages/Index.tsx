@@ -16,7 +16,8 @@ import {
   BarChart3,
   Clock,
   FileText,
-  AlertCircle
+  AlertCircle,
+  SpellCheck
 } from 'lucide-react';
 import { analyzeText } from '@/utils/textAnalyzer';
 import { useToast } from '@/hooks/use-toast';
@@ -52,10 +53,7 @@ const Index = () => {
       // After successful application, remove the issue from the list
       setIssues(prevIssues => prevIssues.filter(issue => issue.id !== id));
       
-      toast({
-        title: "Suggestion applied",
-        description: "The text has been updated with the suggestion."
-      });
+      // Don't show toast here as the TextEditor component will already show one
     }
   };
 
