@@ -36,6 +36,12 @@
     --ring: 222.2 84% 4.9%;
 
     --radius: 0.5rem;
+    
+    /* Add status colors */
+    --error: 0 84.2% 60.2%;
+    --warning: 38 92% 50%;
+    --info: 217.2 91.2% 59.8%;
+    --success: 142.1 76.2% 36.3%;
   }
 
   .dark {
@@ -66,6 +72,12 @@
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
+    
+    /* Add status colors for dark mode */
+    --error: 0 62.8% 30.6%;
+    --warning: 38 92% 50%;
+    --info: 217.2 91.2% 59.8%;
+    --success: 142.1 76.2% 36.3%;
   }
 }
 
@@ -81,15 +93,15 @@
 
 /* Custom styles for LinguaPolish */
 .grammar-error {
-  @apply border-b-2 border-error border-dashed cursor-pointer;
+  @apply border-b-2 border-[hsl(var(--error))] border-dashed cursor-pointer;
 }
 
 .style-suggestion {
-  @apply border-b-2 border-warning border-dashed cursor-pointer;
+  @apply border-b-2 border-[hsl(var(--warning))] border-dashed cursor-pointer;
 }
 
 .clarity-suggestion {
-  @apply border-b-2 border-info border-dashed cursor-pointer;
+  @apply border-b-2 border-[hsl(var(--info))] border-dashed cursor-pointer;
 }
 
 .text-editor {
@@ -101,17 +113,31 @@
 }
 
 .suggestion-card.error {
-  @apply border-l-error;
+  @apply border-l-[hsl(var(--error))];
 }
 
 .suggestion-card.warning {
-  @apply border-l-warning;
+  @apply border-l-[hsl(var(--warning))];
 }
 
 .suggestion-card.info {
-  @apply border-l-info;
+  @apply border-l-[hsl(var(--info))];
 }
 
 .suggestion-card.success {
-  @apply border-l-success;
+  @apply border-l-[hsl(var(--success))];
+}
+
+/* Add animation for fade-in */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-in-out;
 }

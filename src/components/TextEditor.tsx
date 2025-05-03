@@ -14,17 +14,18 @@ const TextEditor = ({ language }: TextEditorProps) => {
   const [issues, setIssues] = useState<any[]>([]);
   const editorRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  const [isApplyingHighlights, setIsApplyingHighlights] = useState(false);
 
   useEffect(() => {
-    if (text) {
+    if (text && !isApplyingHighlights) {
       const analysisResults = analyzeText(text, language);
       setIssues(analysisResults);
-    } else {
-      setIssues([]);
     }
-  }, [text, language]);
+  }, [text, language, isApplyingHighlights]);
 
   const handleTextChange = (e: React.FormEvent<HTMLDivElement>) => {
+    if (isApplyingHighlights) return;
+    
     const content = e.currentTarget.innerText;
     setText(content);
   };
@@ -45,42 +46,101 @@ const TextEditor = ({ language }: TextEditorProps) => {
     });
   };
 
-  const applyHighlighting = () => {
-    if (!editorRef.current || !text) return;
-
-    const content = editorRef.current.innerText;
-    let html = content;
-
-    // Sort issues by their position in descending order to avoid position shifts
-    const sortedIssues = [...issues].sort((a, b) => b.position - a.position);
-
-    for (const issue of sortedIssues) {
-      const { position, length, type } = issue;
-      const before = html.substring(0, position);
-      const highlight = html.substring(position, position + length);
-      const after = html.substring(position + length);
-
-      let className = "";
-      if (type === "grammar") className = "grammar-error";
-      else if (type === "style") className = "style-suggestion";
-      else if (type === "clarity") className = "clarity-suggestion";
-
-      html = `${before}<span class="${className}" data-issue-id="${issue.id}">${highlight}</span>${after}`;
-    }
-
-    // Set the HTML content
-    const tempDiv = document.createElement("div");
-    tempDiv.innerHTML = html;
-    const innerText = tempDiv.innerText;
-
-    if (innerText === text) {
-      editorRef.current.innerHTML = html;
-    }
-  };
-
   useEffect(() => {
     applyHighlighting();
   }, [issues]);
+
+  const applyHighlighting = () => {
+    if (!editorRef.current || !text) return;
+
+    try {
+      setIsApplyingHighlights(true);
+      
+      // Store current cursor position
+      const selection = window.getSelection();
+      let cursorPosition = 0;
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        if (editorRef.current.contains(range.startContainer)) {
+          cursorPosition = range.startOffset;
+        }
+      }
+
+      // Create HTML with highlights
+      let html = text;
+      
+      // Sort issues by their position in descending order to avoid position shifts
+      const sortedIssues = [...issues].sort((a, b) => b.position - a.position);
+
+      for (const issue of sortedIssues) {
+        const { position, length, type } = issue;
+        if (position !== undefined && length !== undefined && 
+            position >= 0 && position + length <= html.length) {
+          
+          const before = html.substring(0, position);
+          const highlight = html.substring(position, position + length);
+          const after = html.substring(position + length);
+
+          let className = "";
+          if (type === "grammar") className = "grammar-error";
+          else if (type === "style") className = "style-suggestion";
+          else if (type === "clarity") className = "clarity-suggestion";
+
+          html = `${before}<span class="${className}" data-issue-id="${issue.id}">${highlight}</span>${after}`;
+        }
+      }
+
+      // Apply the HTML
+      if (editorRef.current) {
+        editorRef.current.innerHTML = html;
+      }
+
+      // Restore cursor position
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        // Try to position cursor approximately where it was before
+        const newPosition = Math.min(cursorPosition, editorRef.current.innerText.length);
+        
+        // Find the text node to place the cursor in
+        const textNodes: Node[] = [];
+        const findTextNodes = (node: Node) => {
+          if (node.nodeType === Node.TEXT_NODE) {
+            textNodes.push(node);
+          } else {
+            for (let i = 0; i < node.childNodes.length; i++) {
+              findTextNodes(node.childNodes[i]);
+            }
+          }
+        };
+        
+        findTextNodes(editorRef.current);
+        
+        if (textNodes.length > 0) {
+          let currentLength = 0;
+          let targetNode = textNodes[0];
+          let targetOffset = newPosition;
+          
+          // Find the target text node and offset
+          for (const node of textNodes) {
+            if (currentLength + node.textContent!.length >= newPosition) {
+              targetNode = node;
+              targetOffset = newPosition - currentLength;
+              break;
+            }
+            currentLength += node.textContent!.length;
+          }
+          
+          // Set the cursor position
+          range.setStart(targetNode, targetOffset);
+          range.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+      }
+    } finally {
+      setIsApplyingHighlights(false);
+    }
+  };
 
   return (
     <div className="relative w-full">
