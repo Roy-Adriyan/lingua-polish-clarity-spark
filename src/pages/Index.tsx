@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import TextEditor from '@/components/TextEditor';
@@ -19,22 +19,37 @@ import {
   FileText,
   AlertCircle
 } from 'lucide-react';
+import { analyzeText } from '@/utils/textAnalyzer';
 
 const Index = () => {
   const [selectedLanguage, setSelectedLanguage] = useState("en-us");
-  const [demoIssues, setDemoIssues] = useState<any[]>([]);
+  const [currentText, setCurrentText] = useState("");
+  const [issues, setIssues] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (currentText) {
+      const analysisResults = analyzeText(currentText, selectedLanguage);
+      setIssues(analysisResults);
+    } else {
+      setIssues([]);
+    }
+  }, [currentText, selectedLanguage]);
 
   const handleLanguageChange = (language: string) => {
     setSelectedLanguage(language);
   };
 
+  const handleTextChange = (text: string) => {
+    setCurrentText(text);
+  };
+
   const handleApplySuggestion = (id: string, replacement: string) => {
-    // For demonstration, just remove the suggestion from the list
-    setDemoIssues(demoIssues.filter(issue => issue.id !== id));
+    // We'll pass this to TextEditor to handle the actual text replacement
+    setIssues(issues.filter(issue => issue.id !== id));
   };
 
   const handleDismissSuggestion = (id: string) => {
-    setDemoIssues(demoIssues.filter(issue => issue.id !== id));
+    setIssues(issues.filter(issue => issue.id !== id));
   };
 
   return (
@@ -109,11 +124,16 @@ const Index = () => {
               <TabsContent value="editor" className="w-full">
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                   <div className="lg:col-span-2">
-                    <TextEditor language={selectedLanguage} />
+                    <TextEditor 
+                      language={selectedLanguage} 
+                      onTextChange={handleTextChange} 
+                      issues={issues}
+                      onApplySuggestion={handleApplySuggestion}
+                    />
                   </div>
                   <div className="lg:col-span-1">
                     <SuggestionPanel
-                      issues={demoIssues}
+                      issues={issues}
                       onApplySuggestion={handleApplySuggestion}
                       onDismissSuggestion={handleDismissSuggestion}
                     />

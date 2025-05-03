@@ -3,28 +3,37 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Eraser, Copy, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { analyzeText } from "@/utils/textAnalyzer";
 
 interface TextEditorProps {
   language: string;
+  onTextChange: (text: string) => void;
+  issues: any[];
+  onApplySuggestion?: (id: string, replacement: string) => void;
 }
 
-const TextEditor = ({ language }: TextEditorProps) => {
+const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextEditorProps) => {
   const [text, setText] = useState("");
-  const [issues, setIssues] = useState<any[]>([]);
   const editorRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const [isApplyingHighlights, setIsApplyingHighlights] = useState(false);
-
+  
+  // Track if we're applying a suggestion to prevent re-analysis
+  const [isApplyingSuggestion, setIsApplyingSuggestion] = useState(false);
+  
+  // Apply highlighting when issues change
   useEffect(() => {
-    if (text && !isApplyingHighlights) {
-      const analysisResults = analyzeText(text, language);
-      setIssues(analysisResults);
+    applyHighlighting();
+  }, [issues]);
+
+  // When text changes, notify parent
+  useEffect(() => {
+    if (!isApplyingHighlights && !isApplyingSuggestion) {
+      onTextChange(text);
     }
-  }, [text, language, isApplyingHighlights]);
+  }, [text, isApplyingHighlights, isApplyingSuggestion]);
 
   const handleTextChange = (e: React.FormEvent<HTMLDivElement>) => {
-    if (isApplyingHighlights) return;
+    if (isApplyingHighlights || isApplyingSuggestion) return;
     
     const content = e.currentTarget.innerText;
     setText(content);
@@ -35,7 +44,7 @@ const TextEditor = ({ language }: TextEditorProps) => {
     if (editorRef.current) {
       editorRef.current.innerText = "";
     }
-    setIssues([]);
+    onTextChange("");
   };
 
   const handleCopy = () => {
@@ -46,9 +55,42 @@ const TextEditor = ({ language }: TextEditorProps) => {
     });
   };
 
-  useEffect(() => {
-    applyHighlighting();
-  }, [issues]);
+  // Method to apply a suggestion to the text
+  const applySuggestion = (id: string, replacement: string) => {
+    const issue = issues.find(i => i.id === id);
+    if (!issue || !editorRef.current) return;
+    
+    try {
+      setIsApplyingSuggestion(true);
+      
+      const { position, length } = issue;
+      if (position !== undefined && length !== undefined) {
+        const before = text.substring(0, position);
+        const after = text.substring(position + length);
+        const newText = before + replacement + after;
+        
+        // Update the text
+        setText(newText);
+        
+        // Update the editor content
+        editorRef.current.innerText = newText;
+        
+        // Notify parent component to update issues
+        if (onApplySuggestion) {
+          onApplySuggestion(id, replacement);
+        }
+
+        // Show toast confirmation
+        toast({
+          title: "Suggestion applied",
+          description: "The text has been updated with the suggestion.",
+        });
+      }
+    } finally {
+      // Ensure we reset this flag
+      setTimeout(() => setIsApplyingSuggestion(false), 50);
+    }
+  };
 
   const applyHighlighting = () => {
     if (!editorRef.current || !text) return;
@@ -73,7 +115,7 @@ const TextEditor = ({ language }: TextEditorProps) => {
       const sortedIssues = [...issues].sort((a, b) => b.position - a.position);
 
       for (const issue of sortedIssues) {
-        const { position, length, type } = issue;
+        const { position, length, type, id } = issue;
         if (position !== undefined && length !== undefined && 
             position >= 0 && position + length <= html.length) {
           
@@ -86,13 +128,29 @@ const TextEditor = ({ language }: TextEditorProps) => {
           else if (type === "style") className = "style-suggestion";
           else if (type === "clarity") className = "clarity-suggestion";
 
-          html = `${before}<span class="${className}" data-issue-id="${issue.id}">${highlight}</span>${after}`;
+          html = `${before}<span class="${className}" data-issue-id="${id}">${highlight}</span>${after}`;
         }
       }
 
       // Apply the HTML
       if (editorRef.current) {
         editorRef.current.innerHTML = html;
+      }
+
+      // Add click handlers to highlighted spans
+      if (editorRef.current) {
+        const spans = editorRef.current.querySelectorAll('span[data-issue-id]');
+        spans.forEach(span => {
+          span.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const issueId = span.getAttribute('data-issue-id');
+            const issue = issues.find(i => i.id === issueId);
+            if (issue && issue.suggestions && issue.suggestions.length > 0) {
+              applySuggestion(issue.id, issue.suggestions[0]);
+            }
+          });
+        });
       }
 
       // Restore cursor position
@@ -193,23 +251,23 @@ const TextEditor = ({ language }: TextEditorProps) => {
             </div>
             {issues.length > 0 ? (
               <div className="flex items-center">
-                <span className="inline-block w-3 h-3 rounded-full bg-error mr-1"></span>
+                <span className="inline-block w-3 h-3 rounded-full bg-[hsl(var(--error))] mr-1"></span>
                 <span className="mr-3">
                   {issues.filter(i => i.type === "grammar").length} grammar
                 </span>
-                <span className="inline-block w-3 h-3 rounded-full bg-warning mr-1"></span>
+                <span className="inline-block w-3 h-3 rounded-full bg-[hsl(var(--warning))] mr-1"></span>
                 <span className="mr-3">
                   {issues.filter(i => i.type === "style").length} style
                 </span>
-                <span className="inline-block w-3 h-3 rounded-full bg-info mr-1"></span>
+                <span className="inline-block w-3 h-3 rounded-full bg-[hsl(var(--info))] mr-1"></span>
                 <span>
                   {issues.filter(i => i.type === "clarity").length} clarity
                 </span>
               </div>
             ) : (
               <div className="flex items-center">
-                <Check className="w-4 h-4 text-success mr-1" />
-                <span className="text-success">No issues detected</span>
+                <Check className="w-4 h-4 text-[hsl(var(--success))] mr-1" />
+                <span className="text-[hsl(var(--success))]">No issues detected</span>
               </div>
             )}
           </div>

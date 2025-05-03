@@ -147,7 +147,7 @@ export const analyzeText = (text: string, language: string): any[] => {
         ...issue,
         id: `${issue.id}-${position}`, // Make ID unique based on position
         position,
-        text: text.substring(position, position + issue.length)
+        length: issue.text.length
       };
       
       foundIssues.push(newIssue);
