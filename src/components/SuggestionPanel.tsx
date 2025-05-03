@@ -64,6 +64,14 @@ const SuggestionPanel = ({
     }
   };
 
+  const handleApplySuggestion = (id: string, replacement: string) => {
+    onApplySuggestion(id, replacement);
+  };
+
+  const handleDismissSuggestion = (id: string) => {
+    onDismissSuggestion(id);
+  };
+
   return (
     <div className="space-y-4">
       <h2 className="font-semibold text-lg mb-4">Suggestions ({issues.length})</h2>
@@ -94,7 +102,7 @@ const SuggestionPanel = ({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => onDismissSuggestion(issue.id)}
+                onClick={() => handleDismissSuggestion(issue.id)}
                 className="text-xs"
               >
                 <X className="w-3 h-3 mr-1" />
@@ -103,7 +111,7 @@ const SuggestionPanel = ({
               {issue.suggestions && issue.suggestions.length > 0 && (
                 <Button
                   size="sm"
-                  onClick={() => onApplySuggestion(issue.id, issue.suggestions[0])}
+                  onClick={() => handleApplySuggestion(issue.id, issue.suggestions[0])}
                   className="text-xs bg-linguapolish-primary hover:bg-linguapolish-secondary"
                 >
                   <Check className="w-3 h-3 mr-1" />

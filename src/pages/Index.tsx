@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
@@ -20,11 +19,13 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { analyzeText } from '@/utils/textAnalyzer';
+import { useToast } from '@/hooks/use-toast';
 
 const Index = () => {
   const [selectedLanguage, setSelectedLanguage] = useState("en-us");
   const [currentText, setCurrentText] = useState("");
   const [issues, setIssues] = useState<any[]>([]);
+  const { toast } = useToast();
 
   useEffect(() => {
     if (currentText) {
@@ -44,12 +45,28 @@ const Index = () => {
   };
 
   const handleApplySuggestion = (id: string, replacement: string) => {
-    // We'll pass this to TextEditor to handle the actual text replacement
-    setIssues(issues.filter(issue => issue.id !== id));
+    // Find the issue to apply the suggestion
+    const issueToReplace = issues.find(issue => issue.id === id);
+    
+    if (issueToReplace) {
+      // After successful application, remove the issue from the list
+      setIssues(prevIssues => prevIssues.filter(issue => issue.id !== id));
+      
+      toast({
+        title: "Suggestion applied",
+        description: "The text has been updated with the suggestion."
+      });
+    }
   };
 
   const handleDismissSuggestion = (id: string) => {
-    setIssues(issues.filter(issue => issue.id !== id));
+    // Remove the dismissed issue from the list
+    setIssues(prevIssues => prevIssues.filter(issue => issue.id !== id));
+    
+    toast({
+      title: "Suggestion dismissed",
+      description: "The suggestion has been removed."
+    });
   };
 
   return (
