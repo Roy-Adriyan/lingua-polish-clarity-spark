@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
@@ -7,6 +8,7 @@ import LanguageSelector from '@/components/LanguageSelector';
 import StatsCard from '@/components/StatsCard';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from "@/components/ui/input";
 import { 
   CheckCircle, 
   PenLine, 
@@ -17,25 +19,50 @@ import {
   Clock,
   FileText,
   AlertCircle,
-  SpellCheck
+  SpellCheck,
+  Check
 } from 'lucide-react';
 import { analyzeText } from '@/utils/textAnalyzer';
+import { analyzeTextWithGemini, setGeminiApiKey } from '@/utils/geminiApiService';
 import { useToast } from '@/hooks/use-toast';
 
 const Index = () => {
   const [selectedLanguage, setSelectedLanguage] = useState("en-us");
   const [currentText, setCurrentText] = useState("");
   const [issues, setIssues] = useState<any[]>([]);
+  const [geminiApiKey, setGeminiApiKeyState] = useState("");
+  const [useGeminiApi, setUseGeminiApi] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
     if (currentText) {
-      const analysisResults = analyzeText(currentText, selectedLanguage);
-      setIssues(analysisResults);
+      if (useGeminiApi && geminiApiKey) {
+        // Use Gemini API for analysis
+        analyzeTextWithGemini(currentText, selectedLanguage)
+          .then(analysisResults => {
+            if (analysisResults && analysisResults.length > 0) {
+              setIssues(analysisResults);
+            } else {
+              // Fall back to local analysis if Gemini returns empty results
+              const localResults = analyzeText(currentText, selectedLanguage);
+              setIssues(localResults);
+            }
+          })
+          .catch(error => {
+            console.error("Error with Gemini analysis:", error);
+            // Fall back to local analysis
+            const localResults = analyzeText(currentText, selectedLanguage);
+            setIssues(localResults);
+          });
+      } else {
+        // Use local analysis
+        const analysisResults = analyzeText(currentText, selectedLanguage);
+        setIssues(analysisResults);
+      }
     } else {
       setIssues([]);
     }
-  }, [currentText, selectedLanguage]);
+  }, [currentText, selectedLanguage, useGeminiApi, geminiApiKey]);
 
   const handleLanguageChange = (language: string) => {
     setSelectedLanguage(language);
@@ -43,6 +70,32 @@ const Index = () => {
 
   const handleTextChange = (text: string) => {
     setCurrentText(text);
+  };
+
+  const handleApiKeyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const key = e.target.value;
+    setGeminiApiKeyState(key);
+    setGeminiApiKey(key);
+  };
+
+  const toggleGeminiApi = () => {
+    if (!useGeminiApi && !geminiApiKey) {
+      toast({
+        title: "API Key Required",
+        description: "Please enter a Gemini API key first.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    setUseGeminiApi(!useGeminiApi);
+    
+    toast({
+      title: useGeminiApi ? "Using Local Analysis" : "Using Gemini API",
+      description: useGeminiApi 
+        ? "Switched to local text analysis" 
+        : "Switched to Gemini API for enhanced text analysis",
+    });
   };
 
   const handleApplySuggestion = (id: string, replacement: string) => {
@@ -116,12 +169,49 @@ const Index = () => {
                   Writing Assistant
                 </span>
               </h2>
-              <div className="w-full md:w-auto">
+              <div className="w-full md:w-auto flex flex-col md:flex-row gap-4">
                 <LanguageSelector 
                   selectedLanguage={selectedLanguage} 
                   onLanguageChange={handleLanguageChange} 
                 />
               </div>
+            </div>
+            
+            {/* Gemini API Key Input */}
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+              <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
+                <div className="flex-grow">
+                  <label htmlFor="gemini-api-key" className="block text-sm font-medium text-gray-700 mb-1">
+                    Gemini API Key
+                  </label>
+                  <Input
+                    id="gemini-api-key"
+                    type="password"
+                    placeholder="Enter your Gemini API key"
+                    value={geminiApiKey}
+                    onChange={handleApiKeyChange}
+                    className="w-full"
+                  />
+                </div>
+                <Button 
+                  onClick={toggleGeminiApi}
+                  variant={useGeminiApi ? "default" : "outline"}
+                  className={`mt-6 md:mt-0 ${useGeminiApi ? "bg-linguapolish-primary" : ""}`}
+                >
+                  {useGeminiApi ? (
+                    <>
+                      <Check className="mr-2 h-4 w-4" />
+                      Using Gemini
+                    </>
+                  ) : (
+                    "Use Gemini API"
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Enhanced grammar and spelling correction powered by Google's Gemini AI. 
+                API key required for advanced features.
+              </p>
             </div>
             
             <Tabs defaultValue="editor" className="w-full">

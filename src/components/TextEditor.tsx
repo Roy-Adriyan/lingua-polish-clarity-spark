@@ -23,7 +23,9 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
   
   // Apply highlighting when issues change
   useEffect(() => {
-    applyHighlighting();
+    if (text) {
+      applyHighlighting();
+    }
   }, [issues]);
 
   // When text changes, notify parent
@@ -77,7 +79,7 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
         // Update the text
         setText(newText);
         
-        // Update the editor content
+        // Update the editor content directly with plain text to avoid formatting issues
         editorRef.current.innerText = newText;
         
         // Notify parent component to update issues
@@ -165,44 +167,48 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
 
       // Restore cursor position
       if (selection && selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        // Try to position cursor approximately where it was before
-        const newPosition = Math.min(cursorPosition, editorRef.current.innerText.length);
-        
-        // Find the text node to place the cursor in
-        const textNodes: Node[] = [];
-        const findTextNodes = (node: Node) => {
-          if (node.nodeType === Node.TEXT_NODE) {
-            textNodes.push(node);
-          } else {
-            for (let i = 0; i < node.childNodes.length; i++) {
-              findTextNodes(node.childNodes[i]);
-            }
-          }
-        };
-        
-        findTextNodes(editorRef.current);
-        
-        if (textNodes.length > 0) {
-          let currentLength = 0;
-          let targetNode = textNodes[0];
-          let targetOffset = newPosition;
+        try {
+          const range = selection.getRangeAt(0);
+          // Try to position cursor approximately where it was before
+          const newPosition = Math.min(cursorPosition, editorRef.current.innerText.length);
           
-          // Find the target text node and offset
-          for (const node of textNodes) {
-            if (currentLength + node.textContent!.length >= newPosition) {
-              targetNode = node;
-              targetOffset = newPosition - currentLength;
-              break;
+          // Find the text node to place the cursor in
+          const textNodes: Node[] = [];
+          const findTextNodes = (node: Node) => {
+            if (node.nodeType === Node.TEXT_NODE) {
+              textNodes.push(node);
+            } else {
+              for (let i = 0; i < node.childNodes.length; i++) {
+                findTextNodes(node.childNodes[i]);
+              }
             }
-            currentLength += node.textContent!.length;
-          }
+          };
           
-          // Set the cursor position
-          range.setStart(targetNode, targetOffset);
-          range.collapse(true);
-          selection.removeAllRanges();
-          selection.addRange(range);
+          findTextNodes(editorRef.current);
+          
+          if (textNodes.length > 0) {
+            let currentLength = 0;
+            let targetNode = textNodes[0];
+            let targetOffset = newPosition;
+            
+            // Find the target text node and offset
+            for (const node of textNodes) {
+              if (currentLength + node.textContent!.length >= newPosition) {
+                targetNode = node;
+                targetOffset = newPosition - currentLength;
+                break;
+              }
+              currentLength += node.textContent!.length;
+            }
+            
+            // Set the cursor position
+            range.setStart(targetNode, targetOffset);
+            range.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
+        } catch (e) {
+          console.error("Error restoring cursor position:", e);
         }
       }
     } finally {
@@ -270,7 +276,7 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
       
       <div
         ref={editorRef}
-        className="text-editor w-full focus:outline-none min-h-[300px]"
+        className="text-editor w-full p-4 border rounded-md min-h-[300px] focus:outline-none focus:ring-2 focus:ring-linguapolish-primary focus:border-transparent"
         contentEditable
         onInput={handleTextChange}
         spellCheck={false}
@@ -278,7 +284,7 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
       ></div>
       
       {!text && (
-        <div className="absolute top-[60px] left-4 text-gray-400 pointer-events-none">
+        <div className="absolute top-[60px] left-8 text-gray-400 pointer-events-none">
           Start typing or paste your text here...
         </div>
       )}
