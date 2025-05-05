@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Eraser, Copy, Check, SpellCheck } from "lucide-react";
@@ -16,17 +15,14 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
   const editorRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const [isApplyingHighlights, setIsApplyingHighlights] = useState(false);
-  
-  // Track if we're applying a suggestion to prevent re-analysis
   const [isApplyingSuggestion, setIsApplyingSuggestion] = useState(false);
-  const [lastAppliedSuggestion, setLastAppliedSuggestion] = useState<string | null>(null);
   
   // Apply highlighting when issues change
   useEffect(() => {
-    if (text) {
+    if (!isApplyingSuggestion && text) {
       applyHighlighting();
     }
-  }, [issues]);
+  }, [issues, isApplyingSuggestion]);
 
   // When text changes, notify parent
   useEffect(() => {
@@ -36,10 +32,10 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
   }, [text, isApplyingHighlights, isApplyingSuggestion]);
 
   const handleTextChange = (e: React.FormEvent<HTMLDivElement>) => {
-    if (isApplyingHighlights || isApplyingSuggestion) return;
+    if (isApplyingHighlights) return;
     
-    const content = e.currentTarget.innerText;
-    setText(content);
+    const newText = e.currentTarget.innerText || "";
+    setText(newText);
   };
 
   const handleClear = () => {
@@ -65,45 +61,36 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
     
     try {
       setIsApplyingSuggestion(true);
-      setLastAppliedSuggestion(id);
       
       const { position, length } = issue;
       if (position !== undefined && length !== undefined) {
-        // For cases where we're adding something at the end (length = 0)
         const actualLength = length === 0 ? 0 : length;
         
         const before = text.substring(0, position);
         const after = text.substring(position + actualLength);
         const newText = before + replacement + after;
         
-        // Update the text
         setText(newText);
-        
-        // Update the editor content directly with plain text to avoid formatting issues
         editorRef.current.innerText = newText;
         
-        // Notify parent component to update issues
         if (onApplySuggestion) {
           onApplySuggestion(id, replacement);
         }
 
-        // Show toast confirmation
         toast({
           title: "Correction applied",
           description: `Fixed: "${issue.text}" → "${replacement}"`,
         });
       }
     } finally {
-      // Ensure we reset this flag
       setTimeout(() => {
         setIsApplyingSuggestion(false);
-        setLastAppliedSuggestion(null);
       }, 50);
     }
   };
 
   const applyHighlighting = () => {
-    if (!editorRef.current || !text) return;
+    if (!editorRef.current || !text || isApplyingSuggestion) return;
 
     try {
       setIsApplyingHighlights(true);
@@ -120,8 +107,6 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
 
       // Create HTML with highlights
       let html = text;
-      
-      // Sort issues by their position in descending order to avoid position shifts
       const sortedIssues = [...issues].sort((a, b) => b.position - a.position);
 
       for (const issue of sortedIssues) {
@@ -134,17 +119,18 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
           const after = html.substring(position + length);
 
           let className = "";
-          if (type === "grammar") className = "grammar-error";
-          else if (type === "style") className = "style-suggestion";
-          else if (type === "clarity") className = "clarity-suggestion";
-          else if (type === "punctuation") className = "punctuation-error";
-          else if (type === "capitalization") className = "capitalization-error";
+          switch (type) {
+            case "grammar": className = "grammar-error"; break;
+            case "style": className = "style-suggestion"; break;
+            case "clarity": className = "clarity-suggestion"; break;
+            case "punctuation": className = "punctuation-error"; break;
+            case "capitalization": className = "capitalization-error"; break;
+          }
 
           html = `${before}<span class="${className}" data-issue-id="${id}" title="${issue.message}">${highlight}</span>${after}`;
         }
       }
 
-      // Apply the HTML
       if (editorRef.current) {
         editorRef.current.innerHTML = html;
       }
@@ -158,7 +144,7 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
             e.stopPropagation();
             const issueId = span.getAttribute('data-issue-id');
             const issue = issues.find(i => i.id === issueId);
-            if (issue && issue.suggestions && issue.suggestions.length > 0) {
+            if (issue?.suggestions?.length > 0) {
               applySuggestion(issue.id, issue.suggestions[0]);
             }
           });
@@ -167,49 +153,12 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
 
       // Restore cursor position
       if (selection && selection.rangeCount > 0) {
-        try {
-          const range = selection.getRangeAt(0);
-          // Try to position cursor approximately where it was before
-          const newPosition = Math.min(cursorPosition, editorRef.current.innerText.length);
-          
-          // Find the text node to place the cursor in
-          const textNodes: Node[] = [];
-          const findTextNodes = (node: Node) => {
-            if (node.nodeType === Node.TEXT_NODE) {
-              textNodes.push(node);
-            } else {
-              for (let i = 0; i < node.childNodes.length; i++) {
-                findTextNodes(node.childNodes[i]);
-              }
-            }
-          };
-          
-          findTextNodes(editorRef.current);
-          
-          if (textNodes.length > 0) {
-            let currentLength = 0;
-            let targetNode = textNodes[0];
-            let targetOffset = newPosition;
-            
-            // Find the target text node and offset
-            for (const node of textNodes) {
-              if (currentLength + node.textContent!.length >= newPosition) {
-                targetNode = node;
-                targetOffset = newPosition - currentLength;
-                break;
-              }
-              currentLength += node.textContent!.length;
-            }
-            
-            // Set the cursor position
-            range.setStart(targetNode, targetOffset);
-            range.collapse(true);
-            selection.removeAllRanges();
-            selection.addRange(range);
-          }
-        } catch (e) {
-          console.error("Error restoring cursor position:", e);
-        }
+        const range = document.createRange();
+        const textNode = editorRef.current.firstChild || editorRef.current;
+        range.setStart(textNode, Math.min(cursorPosition, text.length));
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
       }
     } finally {
       setIsApplyingHighlights(false);
@@ -217,12 +166,10 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
   };
 
   const correctAllIssues = () => {
-    // Apply all suggestions in reverse order to avoid position shifting
     const sortedIssues = [...issues].sort((a, b) => b.position - a.position);
     
     sortedIssues.forEach(issue => {
-      if (issue.suggestions && issue.suggestions.length > 0) {
-        // Delay between applications to ensure they all apply correctly
+      if (issue.suggestions?.length > 0) {
         setTimeout(() => {
           applySuggestion(issue.id, issue.suggestions[0]);
         }, 0);
