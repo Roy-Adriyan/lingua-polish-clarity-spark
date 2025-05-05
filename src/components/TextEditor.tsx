@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Eraser, Copy, Check, SpellCheck } from "lucide-react";
@@ -17,6 +16,7 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
   const { toast } = useToast();
   const [isApplyingHighlights, setIsApplyingHighlights] = useState(false);
   const [isApplyingSuggestion, setIsApplyingSuggestion] = useState(false);
+  const [cursorPosition, setCursorPosition] = useState<{ node: Node | null; offset: number } | null>(null);
   
   // Apply highlighting when issues change
   useEffect(() => {
@@ -35,8 +35,25 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
   const handleTextChange = (e: React.FormEvent<HTMLDivElement>) => {
     if (isApplyingHighlights) return;
     
+    // Save cursor position before updating text
+    saveCursorPosition();
+    
     const newText = e.currentTarget.innerText || "";
     setText(newText);
+  };
+  
+  // Save the current cursor position
+  const saveCursorPosition = () => {
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0 && editorRef.current) {
+      const range = selection.getRangeAt(0);
+      if (editorRef.current.contains(range.startContainer)) {
+        setCursorPosition({
+          node: range.startContainer,
+          offset: range.startOffset
+        });
+      }
+    }
   };
 
   const handleClear = () => {
@@ -45,6 +62,7 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
       editorRef.current.innerText = "";
     }
     onTextChange("");
+    setCursorPosition(null);
   };
 
   const handleCopy = () => {
@@ -82,6 +100,9 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
           title: "Correction applied",
           description: `Fixed: "${issue.text}" → "${replacement}"`,
         });
+        
+        // After applying suggestion, set cursor to the end of the replacement
+        setCursorPosition(null); // Reset saved position to prevent conflicts
       }
     } finally {
       setTimeout(() => {
@@ -96,18 +117,11 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
     try {
       setIsApplyingHighlights(true);
       
-      // Store current cursor position
-      const selection = window.getSelection();
-      let cursorPosition = 0;
-      if (selection && selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        if (editorRef.current.contains(range.startContainer)) {
-          cursorPosition = range.startOffset;
-        }
-      }
-
+      // Capture text content before modification to calculate accurate position mapping
+      const plainText = text;
+      
       // Create HTML with highlights
-      let html = text;
+      let html = plainText;
       const sortedIssues = [...issues].sort((a, b) => b.position - a.position);
 
       for (const issue of sortedIssues) {
@@ -133,6 +147,7 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
       }
 
       if (editorRef.current) {
+        // Apply the new HTML
         editorRef.current.innerHTML = html;
       }
 
@@ -152,55 +167,83 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
         });
       }
 
-      // Safely restore cursor position
-      if (selection && selection.rangeCount > 0 && editorRef.current) {
+      // Restore cursor position if we have one saved
+      if (editorRef.current) {
         try {
-          const range = document.createRange();
-          
-          // Find a valid text node to place the cursor in
-          let textNode = null;
-          let offset = 0;
-          
-          // Function to find text nodes recursively
-          const findTextNode = (node: Node): Node | null => {
-            if (node.nodeType === Node.TEXT_NODE) {
-              return node;
+          const selection = window.getSelection();
+          if (selection) {
+            // If we don't have a saved position or we can't restore it, just place cursor at the beginning
+            if (!cursorPosition) {
+              placeCursorAtBeginning();
+              return;
             }
             
-            if (node.hasChildNodes()) {
-              for (let i = 0; i < node.childNodes.length; i++) {
-                const foundNode = findTextNode(node.childNodes[i]);
-                if (foundNode) return foundNode;
-              }
-            }
+            const range = document.createRange();
+            let textNode = findFirstTextNode(editorRef.current);
             
-            return null;
-          };
-          
-          textNode = findTextNode(editorRef.current);
-          
-          // If we found a text node, set the cursor there, otherwise just put it at the start
-          if (textNode) {
-            const maxOffset = textNode.textContent ? Math.min(cursorPosition, textNode.textContent.length) : 0;
-            range.setStart(textNode, maxOffset);
-          } else if (editorRef.current.firstChild) {
-            // If no text node but has other nodes
-            range.setStart(editorRef.current.firstChild, 0);
-          } else {
-            // Empty editor, no nodes at all
-            range.setStart(editorRef.current, 0);
+            if (textNode) {
+              // Set to beginning of first text node as a reasonable default
+              range.setStart(textNode, 0);
+              range.collapse(true);
+              selection.removeAllRanges();
+              selection.addRange(range);
+            } else {
+              // Fallback if no text nodes
+              placeCursorAtBeginning();
+            }
           }
-          
-          range.collapse(true);
-          selection.removeAllRanges();
-          selection.addRange(range);
         } catch (error) {
           console.error("Error restoring cursor position:", error);
-          // If we can't restore the cursor, at least don't crash
+          // If restoring cursor fails, place it at the beginning as a fallback
+          placeCursorAtBeginning();
         }
       }
     } finally {
       setIsApplyingHighlights(false);
+    }
+  };
+  
+  // Helper function to find the first text node in the editor
+  const findFirstTextNode = (node: Node): Node | null => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      return node;
+    }
+    
+    if (node.hasChildNodes()) {
+      for (let i = 0; i < node.childNodes.length; i++) {
+        const found = findFirstTextNode(node.childNodes[i]);
+        if (found) return found;
+      }
+    }
+    
+    return null;
+  };
+  
+  // Place cursor at the beginning of the editor
+  const placeCursorAtBeginning = () => {
+    if (!editorRef.current) return;
+    
+    try {
+      const selection = window.getSelection();
+      if (selection) {
+        const range = document.createRange();
+        
+        if (editorRef.current.firstChild) {
+          if (editorRef.current.firstChild.nodeType === Node.TEXT_NODE) {
+            range.setStart(editorRef.current.firstChild, 0);
+          } else {
+            range.setStart(editorRef.current, 0);
+          }
+        } else {
+          range.setStart(editorRef.current, 0);
+        }
+        
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    } catch (error) {
+      console.error("Error placing cursor:", error);
     }
   };
 
