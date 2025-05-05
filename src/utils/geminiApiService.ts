@@ -1,21 +1,15 @@
 
-import { useToast } from "@/hooks/use-toast";
-
 interface GeminiAnalysisResponse {
   issues: any[];
   suggestions: any[];
 }
 
-// Replace with actual API key - for demonstration only
-// In production, this should be handled through environment variables
-let GEMINI_API_KEY: string = "";
-
-export const setGeminiApiKey = (key: string) => {
-  GEMINI_API_KEY = key;
-};
+// For local development only - in production this should be handled through environment variables
+// Replace this with your actual Gemini API key
+const GEMINI_API_KEY = "YOUR_GEMINI_API_KEY_HERE";
 
 export const analyzeTextWithGemini = async (text: string, language: string): Promise<any[]> => {
-  if (!text.trim() || !GEMINI_API_KEY) {
+  if (!text.trim()) {
     return [];
   }
 
@@ -61,7 +55,7 @@ export const analyzeTextWithGemini = async (text: string, language: string): Pro
     if (data?.candidates?.[0]?.content?.parts?.[0]?.text) {
       const responseText = data.candidates[0].content.parts[0].text;
       
-      // Try to extract JSON from the response text
+      // Try to extract JSON from the response
       try {
         // Find JSON content in the response
         const jsonMatch = responseText.match(/```json\n([\s\S]*?)\n```/) || 
