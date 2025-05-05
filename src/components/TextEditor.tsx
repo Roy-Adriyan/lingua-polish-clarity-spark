@@ -1,3 +1,4 @@
+
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Eraser, Copy, Check, SpellCheck } from "lucide-react";
@@ -151,14 +152,52 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
         });
       }
 
-      // Restore cursor position
-      if (selection && selection.rangeCount > 0) {
-        const range = document.createRange();
-        const textNode = editorRef.current.firstChild || editorRef.current;
-        range.setStart(textNode, Math.min(cursorPosition, text.length));
-        range.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(range);
+      // Safely restore cursor position
+      if (selection && selection.rangeCount > 0 && editorRef.current) {
+        try {
+          const range = document.createRange();
+          
+          // Find a valid text node to place the cursor in
+          let textNode = null;
+          let offset = 0;
+          
+          // Function to find text nodes recursively
+          const findTextNode = (node: Node): Node | null => {
+            if (node.nodeType === Node.TEXT_NODE) {
+              return node;
+            }
+            
+            if (node.hasChildNodes()) {
+              for (let i = 0; i < node.childNodes.length; i++) {
+                const foundNode = findTextNode(node.childNodes[i]);
+                if (foundNode) return foundNode;
+              }
+            }
+            
+            return null;
+          };
+          
+          textNode = findTextNode(editorRef.current);
+          
+          // If we found a text node, set the cursor there, otherwise just put it at the start
+          if (textNode) {
+            const maxOffset = textNode.textContent ? Math.min(cursorPosition, textNode.textContent.length) : 0;
+            range.setStart(textNode, maxOffset);
+          } else if (editorRef.current.firstChild) {
+            // If no text node but has other nodes
+            range.setStart(editorRef.current.firstChild, 0);
+          } else {
+            // Empty editor, no nodes at all
+            range.setStart(editorRef.current, 0);
+          }
+          
+          range.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        } catch (error) {
+          console.error("Error restoring cursor position:", error);
+          // If we can't restore the cursor, at least don't crash
+        }
       }
     } finally {
       setIsApplyingHighlights(false);
@@ -166,20 +205,26 @@ const TextEditor = ({ language, onTextChange, issues, onApplySuggestion }: TextE
   };
 
   const correctAllIssues = () => {
+    if (issues.length === 0) return;
+    
     const sortedIssues = [...issues].sort((a, b) => b.position - a.position);
+    let count = 0;
     
     sortedIssues.forEach(issue => {
       if (issue.suggestions?.length > 0) {
+        count++;
         setTimeout(() => {
           applySuggestion(issue.id, issue.suggestions[0]);
         }, 0);
       }
     });
     
-    toast({
-      title: "Auto-correction complete",
-      description: `Applied ${sortedIssues.length} corrections`,
-    });
+    if (count > 0) {
+      toast({
+        title: "Auto-correction complete",
+        description: `Applied ${count} corrections`,
+      });
+    }
   };
 
   return (
